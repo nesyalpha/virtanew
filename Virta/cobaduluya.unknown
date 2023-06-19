@@ -1,0 +1,155 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:upload_image/values.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      home: DashboardScreen(),
+    );
+  }
+}
+
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  bool isLoading = false;
+  List<File>? originalImage;
+  List? analyzedImage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Unggah gambar"),
+        actions: [ //sebelah kanan atas (untuk reset)
+          IconButton( //isinya icon
+            onPressed: () {
+              setState(() {
+                originalImage = null;
+                analyzedImage = null;
+              });
+            },
+            icon: const Icon(Icons.restart_alt_outlined),
+          ),
+        ],
+      ),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Original Image"),
+            if (originalImage == null)
+              const Icon(Icons.image_outlined)
+            else
+              Row(
+                children: [
+                  for (var image in originalImage!) Image.file(image, height: 150),
+                ],
+              ),
+            const SizedBox(height: 30),
+            const Text("Analyzed Image"),
+            if (isLoading) const CircularProgressIndicator(),
+            const SizedBox(height: 10),
+            if (analyzedImage == null)
+              const Icon(Icons.image_search_outlined)
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Lebar bahu : ${analyzedImage![0]} cm"),
+                  Text("Lingkar Dada : ${analyzedImage![1]} cm"),
+                  Text("Panjang Tangan : ${analyzedImage![2]} cm"),
+                  Text("Panjang Badan : ${analyzedImage![3]} cm"),
+                  Text("Panjang Kaki : ${analyzedImage![4]} cm"),
+                  Text("Lingkar Pinggang : ${analyzedImage![5]} cm"),
+                  Text("Lingkar Pinggul : ${analyzedImage![6]} cm"),
+                ],
+              ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.upload),
+        onPressed: () => analyzeImages(),
+      ),
+    );
+  }
+
+  Future<void> analyzeImages() async {
+    setState(() {
+      isLoading = true;
+    });
+    final files = await pickImages();
+    if (files != null) {
+      //store original image path
+      setState(() {
+        originalImage = files;
+      });
+      //start uploading
+      final result = await uploadImages(originalImage!);
+      if (result != null) {
+        const snackBar = SnackBar(content: Text("Image uploaded"));
+        //check whether this screen is opened
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(snackBar);
+        setState(() {
+          analyzedImage = [result["BBSistem"], result["lingkarkepala"], result["tinggi"]];
+        });
+      } else {
+        const snackBar = SnackBar(content: Text("Image failed to be uploaded"));
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      }
+    }
+    setState(() {
+      isLoading = false;
+    });
+  }
+
+  Future<Map<String, dynamic>?> uploadImages(List<File> files) async {
+    final uri = Uri.parse("${Values.baseUrl}/test");
+
+    var request = http.MultipartRequest('POST', uri);
+
+    for (var file in files) {
+      request.files.add(await http.MultipartFile.fromPath(Values.field, file.path));
+    }
+
+    final response = await request.send();
+
+    final result = await http.Response.fromStream(response);
+
+    final jsonData = json.decode(result.body);
+
+    if (result.statusCode == 200) {
+      return jsonData;
+    } else {
+      return null;
+    }
+  }
+
+  Future<File?> pickImages() async {
+    final ImagePicker picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.camera);
+    if (images.isNotEmpty) { //image != null
+      return File(image.path);
+    } else {
+      return null;
+    }
+  }
+}
